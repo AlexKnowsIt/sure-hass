@@ -52,5 +52,5 @@ options:
   rails_assume_ssl: false
   onboarding_state: "open"
   env_vars: []
-version: 0.7.0-0.7.5-hotfix.3
+version: 0.7.0-0.7.6
 image: ghcr.io/imcvampire/{arch}-sure-homeassistant
