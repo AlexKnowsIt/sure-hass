@@ -6,6 +6,17 @@ https://github.com/we-promise/sure/releases
 
 The addon version is `<addon_version>-<sure_version>`: the left half is this addon's own version, the right half is the Sure release it ships.
 
+## 1.0.0-0.7.6
+
+**BREAKING:** the add-on is now self-contained.
+
+- PostgreSQL 16 and Redis are bundled. The external Postgres and Redis add-ons are no longer used.
+- Removed the options `postgres_*`, `db_host`, `db_port`, `redis_url`, `secret_key_base`, `self_hosted`, `rails_force_ssl`, `rails_assume_ssl`, `plaid_*` and `openai_access_token`. Only `onboarding_state` and `env_vars` remain; pass the rest through `env_vars`.
+- The secret key is generated automatically and stored in `/data`.
+- Everything long-running runs as an unprivileged user, and a database dump is written to `/data/backups` before every start's migrations.
+- Cold backups: the whole database is part of Home Assistant backups.
+- To migrate from an external Postgres: `pg_dump -Fc -h <host> -U <user> <db> > sure.dump` there, copy the file to `/data/backups`, start the add-on once, then `pg_restore -h /run/postgresql -U sure -d postgres --clean --if-exists --create /data/backups/sure.dump` via `docker exec`.
+
 ## 0.7.0-0.7.4
 
 - Added `env_vars`, a list of `name`/`value` pairs passed straight through to Sure as environment variables. It covers everything Sure reads that this addon has no option for — SMTP, alternative AI providers, Rails tuning — without waiting for an addon release. Entries are applied after the mapped options, so one reusing an existing name overrides it.

@@ -1,179 +1,37 @@
-# Sure (Finances) Addon for Home Assistant
+# Sure (Finances) add-on for Home Assistant
 
-## Introduction
+Runs [Sure](https://github.com/we-promise/sure), a self-hosted personal finance application, as a self-contained Home Assistant add-on. PostgreSQL 16 and Redis are bundled, so there is nothing else to install.
 
-**Sure** is a personal finance management application that helps you track your expenses, income, and investments. This addon enables you to run Sure within Home Assistant as an addon, providing seamless integration into your smart home ecosystem.
+## Install
 
-### Features
+1. In Home Assistant, open **Settings > Add-ons > Add-on Store > ⋮ > Repositories** and add:
 
-- Track income and expenses
-- Monitor investments
-- Seamless integration with Home Assistant
-- Self-hosted for privacy and control
+   ```
+   https://github.com/AlexKnowsIt/sure-hass
+   ```
 
-See the main repository here: [Sure GitHub Repository](https://github.com/we-promise/sure)
+2. Install **Sure (Finances)** and start it.
+3. Open `http://homeassistant.local:1234` (or use the **Open Web UI** button) and create your account.
+4. Restrict registration: set `onboarding_state` to `closed` in the add-on options, or change it under **Settings > Self-Hosting** in Sure.
 
-> [!NOTE]
-> The addon wraps the official `ghcr.io/we-promise/sure` image. Its version is `<addon_version>-<sure_version>`, so **0.7.0-0.7.4** is this addon at 0.7.0 shipping Sure 0.7.4. The left half changes for addon-only fixes, the right half tracks the Sure release.
+Enable **Auto update** on the add-on and **Back up before update** in Home Assistant's update settings.
 
-> [!IMPORTANT]
-> This addon was previously published as **Maybe Finance** with the slug `maybe_finance`. It is now `sure`, which Home Assistant treats as a different addon. If you are coming from the old one, see [Migrating from the Maybe Finance addon](#migrating-from-the-maybe-finance-addon).
+See [sure/README.md](sure/README.md) for options, backups, restore and security notes.
 
----
+## Updates
 
-## Installation Guide
+A single workflow (`.github/workflows/build.yaml`) runs weekly. When upstream Sure publishes a new stable release, it builds the image for amd64 and aarch64, smoke-tests it (first start, restart on the same data, pre-migration dump), pushes it to GHCR and only then bumps the version in `main`. Nothing is published unless the smoke test passes.
 
-Follow these steps to install and set up the Sure addon in Home Assistant:
+One-time setup for a fork:
 
-### 1. Add the Sure Repository
+- Enable GitHub Actions and the scheduled workflow.
+- After the first publish, make the two GHCR packages (`amd64-sure-homeassistant`, `aarch64-sure-homeassistant`) public, otherwise Home Assistant cannot pull them.
+- GitHub disables scheduled workflows after 60 days without repository activity. Re-enable it, or trigger the workflow manually, if that happens.
 
-Add the following repository to Home Assistant:
+## Why no ingress
 
-```
-https://github.com/imcvampire/sure-hass/
-```
+Sure does not support serving from a sub-path, which Home Assistant ingress requires. The add-on is reached directly on port 1234 instead.
 
-### 2. Install PostgreSQL Addon
+## Credits and license
 
-You need to install the PostgreSQL addon for database storage. Use the following repository:
-
-```
-https://github.com/alexbelgium/hassio-addons
-```
-
-Once installed, **set a password** for the PostgreSQL addon and start it.
-
-### 3. Install Redis
-
-You need to install the Redis addon. Use the following repository:
-
-```
-https://github.com/fabio-garavini/hassio-addons
-```
-
-Once installed, **set a password** for the addon and start it.
-
-If you set a Redis password, put it in the URL itself — Sure only reads `REDIS_PASSWORD` when using Redis Sentinel, so a plain `redis_url` must carry the credentials:
-
-```
-redis://:YOUR_REDIS_PASSWORD@3b88f413-redis:6379
-```
-
-Redis is **required**: Sure runs its background jobs (account syncs, imports, market data, AI features) on Sidekiq, which stores its queues in Redis. The addon starts a Sidekiq worker next to the web server, so without a reachable Redis the addon will not stay up.
-
-Note: The alexbelgium repository also contains a Postgres addon (16), but i had problems with long starting time, thus i recommend the addon by alexbelgium.
-
-### 4. Install the Sure Addon
-
-- Go to **Add-on Store** in Home Assistant.
-- Search for **Sure (Finances)** and install it.
-
-### 5. Configure the Addon
-
-- Set a **secure secret key** (this is required for authentication security). Generate one with `openssl rand -hex 64`.
-- Use the **same database password** as set in the PostgreSQL addon.
-- Point `redis_url` at your Redis addon.
-- Pick an `onboarding_state`:
-  - `open` — anyone can create an account from the registration page.
-  - `invite_only` — signups require a valid invite code.
-  - `closed` — the registration page is disabled.
-
-  This option only seeds the value on first boot. Once the setting has been written inside Sure — which happens as soon as anyone saves **Settings > Self-Hosting > Onboarding** — the stored value wins and changing the addon option has no effect. Leave it `open` for the initial setup, create your account, then restrict signups from that settings page.
-
-- Add any extra environment variables Sure supports but this addon has no option for (SMTP, alternative AI providers) under `env_vars`, as `name`/`value` pairs:
-
-  ```yaml
-  env_vars:
-    - name: SMTP_ADDRESS
-      value: smtp.example.com
-  ```
-
-  These are applied after the options above, so an entry that reuses one of their names overrides it. Names must be letters, digits and underscores and must not start with a digit; the addon refuses to start otherwise. See the [addon README](sure/README.md#custom-environment-variables).
-
-### 6. Start the Sure Addon
-
-After configuration, start the addon from the Home Assistant interface.
-
-### 7. Access Sure
-
-Once the addon is running, you can access the application at:
-
-```
-http://your-home-assistant-ip:1234
-```
-
-or
-
-```
-http://homeassistant.local:1234
-```
-
-Additionally, there is a **button in the addon interface** to open the web UI directly.
-
----
-
-## Testing prereleases: the Edge channel
-
-The same repository also publishes **Sure (Finances) Edge**, an opt-in channel that tracks upstream Sure prereleases (`v*-alpha.*`) instead of stable releases. It is the same addon wrapper — identical options, same startup script — pinned to a newer, unfinished Sure. A workflow checks upstream daily and opens a version-bump PR whenever a new alpha is published.
-
-Install it the same way as the stable addon: it shows up in the Add-on Store alongside **Sure (Finances)** once you have added this repository.
-
-> [!WARNING]
-> Alpha builds run unreleased database migrations on boot, and those are not designed to be reversible. Give the edge addon its own database and back up before every update. Pointing it at the database your stable addon uses can leave that database on a schema the stable release cannot read.
-
-The two addons are independent to Home Assistant — separate `/data` volumes, separate options — so you can run both at once. Two defaults differ to keep them from colliding:
-
-| | Sure (Finances) | Sure (Finances) Edge |
-| --- | --- | --- |
-| Slug | `sure` | `sure-edge` |
-| Tracks | Latest Sure release | Latest Sure prerelease |
-| Default host port | `1234` | `1235` |
-| Default `postgres_db` | `postgres` | `sure_edge` |
-| Update checks | Weekly | Daily |
-
-There is no automatic promotion between the channels: the stable addon keeps tracking stable releases, and nothing you do in the edge addon affects it. Report anything you find against [the Sure repository](https://github.com/we-promise/sure) if it is an application bug, or [this repository](https://github.com/imcvampire/sure-hass/) if it is the addon wrapper.
-
----
-
-## Migrating from the Maybe Finance addon
-
-The addon slug changed from `maybe_finance` to `sure`, so Home Assistant will not upgrade the old addon in place — it appears as a new one.
-
-1. Back up your PostgreSQL database before you start.
-2. Stop and uninstall the old **Maybe Finance** addon. Leave the PostgreSQL and Redis addons running.
-3. Install **Sure (Finances)** and point it at the **same database** (same `db_host`, `db_port`, `postgres_user`, `postgres_password`, `postgres_db`) and the **same `secret_key_base`**. Reusing the secret key matters: it derives the encryption keys for credentials stored in the database.
-4. Start the addon. It runs pending migrations on boot.
-
-Two options no longer exist, because Sure removed the features behind them:
-
-| Removed option | Replacement |
-| --- | --- |
-| `good_job_execution_mode` | None. Sure replaced GoodJob with Sidekiq, and the addon runs the worker for you. |
-| `require_invite_code` | `onboarding_state` (`open`, `invite_only`, `closed`) |
-
-Files you uploaded to the old addon (statements, imports, logos) are not carried over; they lived inside the old container. New uploads are stored under the addon's `/data/storage` and survive restarts and updates.
-
----
-
-## Architectures
-
-- `amd64`
-- `aarch64`
-
-Upstream publishes `linux/amd64` and `linux/arm64` only, so `armv7`, `armhf` and `i386` are not supported.
-
-## Contributing
-
-If you find any issues or want to contribute, please visit the repository:
-[Sure (Finances) Addon GitHub Repository](https://github.com/imcvampire/sure-hass/)
-
-We welcome contributions in the form of bug reports, feature requests, and pull requests.
-
-- For addon-specific issues or feature requests, please open an issue in the [Sure (Finances) Addon Repository](https://github.com/imcvampire/sure-hass/).
-- If you encounter bugs or have feature requests for the **Sure** application itself, please open an issue in the [Main Sure Repository](https://github.com/we-promise/sure).
-
----
-
-## License
-
-This project is licensed under the **GNU AFFERO GENERAL PUBLIC LICENSE** **Version 3**
+Originally created by [imcvampire/sure-hass](https://github.com/imcvampire/sure-hass). Licensed under the GNU Affero General Public License v3.0.
