@@ -60,6 +60,9 @@ chown -R redis:redis /data/redis
 [ ! -d "$PG_DATA" ] || chown -R postgres:postgres "$PG_DATA"
 chown postgres:postgres /data/backups "$PG_SOCKET_DIR"
 chmod 700 /data/backups
+# The service users must be able to traverse /data to reach their own
+# directories; everything sensitive below it carries its own mode.
+chmod a+x /data
 
 # SECRET_KEY_BASE is generated once and reused. It also derives the encryption
 # keys for credentials stored in the database, so it must stay stable.
