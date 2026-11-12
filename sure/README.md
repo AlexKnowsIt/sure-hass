@@ -1,70 +1,61 @@
 # Sure (Finances)
 
-Home Assistant addon that runs [Sure](https://github.com/we-promise/sure), a self-hosted personal finance application, from the official `ghcr.io/we-promise/sure` image.
+Home Assistant add-on that runs [Sure](https://github.com/we-promise/sure) from the official `ghcr.io/we-promise/sure` image. Repository: <https://github.com/AlexKnowsIt/sure-hass>. Install steps are in the [repository README](../README.md).
 
-Installation, prerequisites and migration notes live in the [repository README](../README.md).
+## What is bundled
 
-## Requirements
+- Sure: Puma web server (port 3000, exposed as 1234) and the Sidekiq worker.
+- PostgreSQL 16, data in `/data/postgres`, listening on `127.0.0.1` inside the container only.
+- Redis, append-only file in `/data/redis`, listening on `127.0.0.1` only.
 
-- A PostgreSQL addon (Sure stores all of its data there).
-- A Redis addon. Sure runs background jobs on Sidekiq, and this addon starts a Sidekiq worker next to the web server, so Redis must be reachable.
+Everything long-running runs as an unprivileged user. Uploads are stored in `/data/storage`.
 
 ## Options
 
-| Option | Required | Default | Maps to | Notes |
-| --- | --- | --- | --- | --- |
-| `postgres_user` | no | `postgres` | `POSTGRES_USER` | |
-| `postgres_password` | **yes** | `homeassistant` | `POSTGRES_PASSWORD` | Must match your PostgreSQL addon. |
-| `postgres_db` | no | `postgres` | `POSTGRES_DB` | |
-| `secret_key_base` | **yes** | `generate_a_secure_key_here` (placeholder — change it) | `SECRET_KEY_BASE` | Generate with `openssl rand -hex 64`. Also derives the encryption keys for credentials stored in the database, so keep it stable. |
-| `db_host` | no | `172.30.32.1` | `DB_HOST` | |
-| `db_port` | no | `5432` | `DB_PORT` | |
-| `redis_url` | no | `redis://3b88f413-redis:6379` | `REDIS_URL` | A Redis password must be embedded in the URL (`redis://:password@host:6379`); `REDIS_PASSWORD` is only read for Sentinel setups. |
-| `self_hosted` | **yes** | `true` | `SELF_HOSTED` | |
-| `rails_force_ssl` | **yes** | `false` | `RAILS_FORCE_SSL` | |
-| `rails_assume_ssl` | **yes** | `false` | `RAILS_ASSUME_SSL` | Set to `true` when a reverse proxy terminates TLS in front of the addon. |
-| `onboarding_state` | **yes** | `open` | `ONBOARDING_STATE` | `open`, `invite_only` or `closed`. Seeds the value on first boot only — once saved in **Settings > Self-Hosting > Onboarding**, the stored value wins and this option is ignored. |
-| `plaid_client_id` | no | — | `PLAID_CLIENT_ID` | See the [Plaid setup guide](https://github.com/we-promise/sure/blob/main/docs/hosting/plaid.md). |
-| `plaid_secret` | no | — | `PLAID_SECRET` | |
-| `plaid_env` | no | — | `PLAID_ENV` | `production` or `sandbox`. |
-| `openai_access_token` | no | — | `OPENAI_ACCESS_TOKEN` | Enabling AI features incurs costs on your OpenAI account. |
-| `env_vars` | no | _(empty)_ | _(any)_ | List of `name`/`value` pairs passed straight through as environment variables. See [Custom environment variables](#custom-environment-variables). |
-
-## Custom environment variables
-
-Sure reads more environment variables than this addon exposes as options — SMTP
-settings, alternative AI providers, Rails tuning. `env_vars` passes any of them
-through without waiting for an addon release:
+| Option | Default | Notes |
+| --- | --- | --- |
+| `onboarding_state` | `open` | `open`, `invite_only` or `closed`. Seeds the value on first boot only; once saved in **Settings > Self-Hosting** in Sure, the stored value wins. Both `invite_only` and `closed` block creating the first account (`closed` disables the registration page, `invite_only` requires an invite code), so keep `open` until your account exists, then switch. |
+| `env_vars` | `[]` | List of `name`/`value` pairs passed to Sure as environment variables (SMTP, AI providers, Rails tuning). |
 
 ```yaml
 env_vars:
   - name: SMTP_ADDRESS
     value: smtp.example.com
-  - name: SMTP_PORT
-    value: "587"
 ```
 
-Notes:
+Entries are applied after the add-on's own defaults, so they can override them. Names must match `[A-Za-z_][A-Za-z0-9_]*`, otherwise the add-on refuses to start. Only names are logged, never values.
 
-- Names must be letters, digits and underscores, and must not start with a digit.
-  The addon refuses to start on anything else rather than silently dropping it.
-- They are applied **after** the options above, so an entry reusing one of their
-  names (`REDIS_URL`, say) wins. That is the point — it is the escape hatch when
-  an option's shape does not fit — but it also means a typo can override
-  something that was working.
-- Values are not echoed to the addon log, only names, because any of them may be
-  a credential.
-- Which variables actually do anything is up to Sure, not this addon. See the
-  upstream [hosting docs](https://github.com/we-promise/sure/tree/main/docs/hosting).
+## Backups
 
-## Storage
+- The add-on uses `backup: cold`: Home Assistant stops it during a backup, so the PostgreSQL files are consistent. Database, Redis, uploads and the secret key are all in the normal Home Assistant backup.
+- On every start, before migrations run, the add-on writes a `pg_dump` to `/data/backups` and keeps the 3 newest. If that dump fails, startup aborts.
+- Enable **Back up before update** in Home Assistant and add-on **Auto update**.
 
-Uploads handled by Active Storage (statements, imports, logos) are written to the addon's persistent `/data/storage`, exposed to the app as `/rails/storage`.
+Restore a dump into the running add-on (find the container name with `docker ps --filter name=sure`):
+
+```
+docker exec <name> sh -c 'ls /data/backups'
+docker exec <name> sh -c 'pg_restore -h /run/postgresql -U sure -d postgres --clean --if-exists --create /data/backups/<file>.dump'
+```
+
+The app holds open connections that block `--clean`; disconnect them first with `psql -h /run/postgresql -U sure -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='sure' AND pid <> pg_backend_pid()"` (run it through `docker exec` as well), and restart the add-on afterwards. To restore a dump from outside, copy it into `/data/backups` first (for example with the Samba or SSH add-on, under the add-on's data folder).
+
+## Security notes
+
+- Sure is served over plain HTTP on the LAN at port 1234. For remote access, put a TLS reverse proxy or VPN in front and add `RAILS_ASSUME_SSL=true` to `env_vars`.
+- `SECRET_KEY_BASE` is generated once and stored in `/data/secret_key_base` (mode 600). It also protects credentials stored in the database, so Home Assistant backups contain everything needed to read your data: encrypt your backups.
+- PostgreSQL uses trust authentication on loopback only, which is acceptable because only this add-on's own processes share the container.
+
+## Migrating from an external PostgreSQL
+
+On the old database:
+
+```
+pg_dump -Fc -h <host> -U <user> <database> > sure.dump
+```
+
+Copy `sure.dump` to `/data/backups` of the new add-on, start it once, then restore as above. The secret key is generated by the add-on. If your old database stores encrypted credentials, add your old `SECRET_KEY_BASE` to `env_vars` so they stay readable.
 
 ## Architectures
 
-`amd64` and `aarch64`. Upstream publishes `linux/amd64` and `linux/arm64` only.
-
-## License
-
-**GNU AFFERO GENERAL PUBLIC LICENSE Version 3**
+`amd64` and `aarch64`.
