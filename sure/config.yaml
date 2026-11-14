@@ -2,7 +2,7 @@ name: Sure (Finances)
 description: >-
   Sure is a personal finance management application that helps you track your
   expenses, income, and investments. PostgreSQL and Redis are bundled.
-version: 1.0.0-0.7.6
+version: 1.0.1-0.7.6
 slug: sure
 image: ghcr.io/alexknowsit/{arch}-sure-homeassistant
 url: https://github.com/AlexKnowsIt/sure-hass
