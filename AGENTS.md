@@ -13,9 +13,12 @@ This repository is a Home Assistant add-on that wraps the official Sure image
    external service that must exist for Sure to start.
 2. **Secure and data-safe.** Users store bank credentials here. A failed start
    is always better than silent data loss or a weakened default.
-3. **Easy to maintain.** Small diffs, no abstractions nobody asked for. Prefer
+3. **Backed up and restorable.** A normal Home Assistant backup alone must be
+   enough to bring an install back on a fresh system, with all data and
+   stored credentials readable.
+4. **Easy to maintain.** Small diffs, no abstractions nobody asked for. Prefer
    deleting over adding.
-4. **In sync with upstream Sure.** Follow upstream's behaviour and environment
+5. **In sync with upstream Sure.** Follow upstream's behaviour and environment
    variables instead of re-implementing or patching them.
 
 ## Layout
@@ -60,6 +63,26 @@ This repository is a Home Assistant add-on that wraps the official Sure image
 - **No new add-on options** unless something cannot be done through `env_vars`.
   Upstream variables go through `env_vars`; user entries override defaults.
 
+## Backup and restore
+
+- **Keep `backup: cold`** in `config.yaml`. Home Assistant stops the add-on
+  first, so the PostgreSQL files in `/data` are consistent. Switching to a hot
+  backup requires a dump step that the backup waits for.
+- **Everything needed to restore lives in `/data`**: database, Redis, uploads
+  (`storage/`), `secret_key_base`. Never keep state or keys anywhere else, and
+  never exclude any of these from the backup.
+- **A backup without `secret_key_base` is useless** for encrypted data. Any
+  change touching keys must keep old backups restorable, including restoring
+  a dump under a `SECRET_KEY_BASE` passed through `env_vars`.
+- **Pre-migration dump:** every start writes a `pg_dump` to `/data/backups`
+  before migrations and keeps the 3 newest. A failed dump of an existing
+  database aborts startup. Do not make this best-effort.
+- **Restore paths are documented in `sure/README.md`** (dump restore, migration
+  from an external PostgreSQL). Any change to `/data` layout, database name,
+  user or PostgreSQL major must update those steps and keep them working.
+- **Shutdown must be clean** (CI checks exit code 0), otherwise a cold backup
+  may capture a database that needs crash recovery.
+
 ## Staying in sync with Sure
 
 - The weekly workflow picks the latest stable upstream release (no
@@ -88,6 +111,9 @@ marked **BREAKING** and explain the migration.
 - For changes to `run.sh` or the Dockerfile, CI builds both architectures and
   runs the smoke test (two starts on the same `/data`, clean exit, dump
   written). It must stay green; never weaken or skip it.
+- For changes affecting backup or restore, test a restore by hand: dump,
+  restore with the README commands into a fresh `/data`, start, log in, and
+  check that a stored provider credential is still readable.
 - Update `sure/README.md` when user-visible behaviour, security notes or
   restore steps change.
 
