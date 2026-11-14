@@ -163,6 +163,23 @@ for i in "${!custom_names[@]}"; do
     export "${custom_names[$i]}=${custom_values[$i]}"
 done
 
+# Explicit Active Record encryption keys, unless env_vars sets any of them.
+# They are exactly the keys Sure derives from SECRET_KEY_BASE when none are set
+# (derived_keys in lib/active_record_encryption_config.rb upstream), so data
+# already encrypted stays readable and no re-encryption is needed. Derived from
+# the effective SECRET_KEY_BASE, so one taken over through env_vars still works.
+# Not pinned to a file on purpose: SECRET_KEY_BASE also keys Sure's encrypted
+# settings, so it must never change anyway, and pinning would break restoring a
+# dump encrypted under another SECRET_KEY_BASE.
+if [ -z "${ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY:-}${ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY:-}${ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT:-}" ]; then
+    mapfile -t ar_keys < <(ruby -rdigest -e '%w[primary_key deterministic_key key_derivation_salt].each { |k| puts Digest::SHA256.hexdigest("#{ENV.fetch("SECRET_KEY_BASE")}:#{k}")[0..63] }')
+    [ "${#ar_keys[@]}" -eq 3 ] || { echo "Deriving the encryption keys failed" >&2; exit 1; }
+    export ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY="${ar_keys[0]}" \
+        ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY="${ar_keys[1]}" \
+        ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT="${ar_keys[2]}"
+    unset ar_keys
+fi
+
 # Create or migrate the database once, before either process starts. Sidekiq
 # boots Rails too and would fail on a database that does not exist yet. It runs
 # in the background so that a stop request during a long migration is honoured.

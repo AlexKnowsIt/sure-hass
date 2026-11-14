@@ -6,6 +6,10 @@ https://github.com/we-promise/sure/releases
 
 The addon version is `<addon_version>-<sure_version>`: the left half is this addon's own version, the right half is the Sure release it ships.
 
+## 1.0.1-0.7.6
+
+- Sets the Active Record encryption keys explicitly, which removes Sure's "encryption keys missing" warning. The keys equal the ones Sure derived before, so no data has to be re-encrypted. Keys set in `env_vars` take precedence.
+
 ## 1.0.0-0.7.6
 
 **BREAKING:** the add-on is now self-contained.

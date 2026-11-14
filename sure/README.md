@@ -44,6 +44,7 @@ The app holds open connections that block `--clean`; disconnect them first with 
 
 - Sure is served over plain HTTP on the LAN at port 1234. For remote access, put a TLS reverse proxy or VPN in front and add `RAILS_ASSUME_SSL=true` to `env_vars`.
 - `SECRET_KEY_BASE` is generated once and stored in `/data/secret_key_base` (mode 600). It also protects credentials stored in the database, so Home Assistant backups contain everything needed to read your data: encrypt your backups.
+- The Active Record encryption keys (`ACTIVE_RECORD_ENCRYPTION_*`) are set explicitly on every start, derived from `SECRET_KEY_BASE` exactly as Sure derives them itself. Existing encrypted data stays readable. Never change `SECRET_KEY_BASE` afterwards. To use your own keys, set all three in `env_vars`.
 - PostgreSQL uses trust authentication on loopback only, which is acceptable because only this add-on's own processes share the container.
 
 ## Migrating from an external PostgreSQL
