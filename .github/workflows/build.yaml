@@ -131,6 +131,21 @@ jobs:
           # pre-migration dump path.
           start || fail
           docker exec sure sh -c 'ls /data/backups/*.dump' || fail
+
+          # Restore test: a dump written by the add-on must bring back data
+          # that was lost after it, using the commands from sure/README.md.
+          db() { docker exec sure psql -h /run/postgresql -U sure -v ON_ERROR_STOP=1 -tAc "$1" "${2:-sure}"; }
+          db "CREATE TABLE restore_check (v text); INSERT INTO restore_check VALUES ('ok')" || fail
+          stop || fail
+          # Third start: the pre-migration dump now contains the marker.
+          start || fail
+          dump=$(docker exec sure sh -c 'ls -1t /data/backups/*.dump | head -n 1') || fail
+          db "DROP TABLE restore_check" || fail
+          db "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='sure' AND pid <> pg_backend_pid()" postgres || fail
+          docker exec sure pg_restore -h /run/postgresql -U sure -d postgres --clean --if-exists --create "$dump" || fail
+          stop || fail
+          start || fail
+          [ "$(db 'SELECT v FROM restore_check')" = ok ] || { echo "Restored database lacks the marker" >&2; fail; }
           stop || fail
 
       - name: Log in to ghcr.io

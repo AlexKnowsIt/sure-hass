@@ -113,7 +113,8 @@ marked **BREAKING** and explain the migration.
   written). It must stay green; never weaken or skip it.
 - For changes affecting backup or restore, test a restore by hand: dump,
   restore with the README commands into a fresh `/data`, start, log in, and
-  check that a stored provider credential is still readable.
+  check that a stored provider credential is still readable. CI covers the
+  database part (dump, restore, marker row survives), not encrypted values.
 - Update `sure/README.md` when user-visible behaviour, security notes or
   restore steps change.
 
