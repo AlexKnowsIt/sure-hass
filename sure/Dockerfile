@@ -10,7 +10,7 @@
 # Build locally with:
 #   docker build -f Dockerfile .
 
-ARG SURE_VERSION=0.7.6-hotfix.1
+ARG SURE_VERSION=0.7.6-hotfix.2
 FROM ghcr.io/we-promise/sure:${SURE_VERSION}
 
 # The upstream image drops to uid 1000, but run.sh needs root to prepare /data.
